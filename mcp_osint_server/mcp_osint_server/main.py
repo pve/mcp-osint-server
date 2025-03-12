@@ -39,22 +39,6 @@ def dnstwist_lookup(domain: str) -> str:
         return f"Error running DNSTwist: {str(e)}"
 
 @mcp.tool()
-def assetfinder_lookup(target: str) -> str:
-    try:
-        result = subprocess.run(["assetfinder", target], capture_output=True, text=True, timeout=10000)
-        return "Assetfinder Results:\n" + (result.stdout if result.returncode == 0 else "Failed")
-    except Exception as e:
-        return f"Error running Assetfinder: {str(e)}"
-
-@mcp.tool()
-def subfinder_lookup(target: str) -> str:
-    try:
-        result = subprocess.run(["subfinder", "-d", target], capture_output=True, text=True, timeout=10000)
-        return "Subfinder Results:\n" + (result.stdout if result.returncode == 0 else "Failed")
-    except Exception as e:
-        return f"Error running Subfinder: {str(e)}"
-
-@mcp.tool()
 def dig_lookup(target: str) -> str:
     try:
         result = subprocess.run(["dig", target], capture_output=True, text=True, timeout=10000)
@@ -78,8 +62,6 @@ def osint_overview(target: str) -> str:
         nmap_scan,
         dnsrecon_lookup,
         dnstwist_lookup,
-        assetfinder_lookup,
-        subfinder_lookup,
         dig_lookup,
         host_lookup
     ]
