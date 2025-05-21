@@ -34,13 +34,13 @@ The mcp-osint server provides a set of tools to perform open source intelligence
 
 When integrated with Claude, you can use natural language prompts like:
 
-* "Get me the WHOIS information for example.com"
-* "Perform a fast Nmap scan on 192.168.1.1"
-* "Run DNS reconnaissance on mytarget.com"
-* "Check for domain typos using DNSTwist on mytarget.com"
-* "Show me all DNS records for example.com using dig"
-* "Fetch host lookup details for example.com"
-* "Give me an OSINT overview for example.com"
+- "Get me the WHOIS information for example.com"
+- "Perform a fast Nmap scan on 192.168.1.1"
+- "Run DNS reconnaissance on mytarget.com"
+- "Check for domain typos using DNSTwist on mytarget.com"
+- "Show me all DNS records for example.com using dig"
+- "Fetch host lookup details for example.com"
+- "Give me an OSINT overview for example.com"
 
 ## Quickstart
 
@@ -52,3 +52,30 @@ To install **mcp-osint** for Claude Desktop automatically via [Smithery](https:/
 
 ```bash
 npx -y @smithery/cli install mcp-osint --client claude
+```
+
+### Build and run via Docker
+
+```bash
+docker build -t mcp-osint-server .
+```
+
+### Adding to Claude Desktop
+
+Merge this with the existing config:
+
+```json
+{
+  "mcpServers": {
+    "osint": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "mcp-osint-server"
+      ]
+    }
+  }
+}
+```
