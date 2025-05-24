@@ -10,8 +10,6 @@ RUN apt-get update && \
 RUN pip install uv
 
 # Create and switch to a non-root user
-RUN useradd -m mcpuser
-USER mcpuser
 
 WORKDIR /app
 
@@ -24,6 +22,12 @@ RUN uv pip install --system --no-cache -r requirements.txt .
 
 # Copy the rest of the application code
 COPY mcp_osint_server/ ./mcp_osint_server/
+ENV PYTHONPATH=/app
+
+RUN useradd -m mcpuser
+USER mcpuser
+
+EXPOSE 3000
 
 # Set the entrypoint to the MCP server startup command provided by setup.py
 ENTRYPOINT ["mcp-osint"]
