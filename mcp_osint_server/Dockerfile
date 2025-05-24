@@ -6,15 +6,24 @@ RUN apt-get update && \
     apt-get install -y whois nmap dnsrecon dnstwist dnsutils host && \
     rm -rf /var/lib/apt/lists/*
 
+# Install uv globally as root
+RUN pip install uv
+
+# Create and switch to a non-root user
+RUN useradd -m mcpuser
+USER mcpuser
+
 WORKDIR /app
 
-# Copy necessary files from the current directory
-COPY setup.py ./
+# Copy dependency definition files
 COPY requirements.txt ./
-COPY mcp_osint_server/ ./mcp_osint_server/
+COPY setup.py ./
 
-# Install the MCP OSINT server package
-RUN pip install --no-cache-dir .
+# Install dependencies
+RUN uv pip install --system --no-cache -r requirements.txt .
+
+# Copy the rest of the application code
+COPY mcp_osint_server/ ./mcp_osint_server/
 
 # Set the entrypoint to the MCP server startup command provided by setup.py
 ENTRYPOINT ["mcp-osint"]
