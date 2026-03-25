@@ -1,0 +1,180 @@
+{
+  "name": "DNS and WHOIS MCP Server",
+  "nodes": [
+    {
+      "parameters": {
+        "authentication": "none",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0001-4000-8000-000000000001",
+      "name": "MCP Server Trigger",
+      "type": "@n8n/n8n-nodes-langchain.mcpTrigger",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "dns-whois-mcp-server"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.name }}",
+                    "rightValue": "dns_lookup",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "dns_lookup"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.name }}",
+                    "rightValue": "whois_lookup",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "whois_lookup"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0001-4000-8000-000000000002",
+      "name": "Route by Tool",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// DNS Lookup using Google DNS-over-HTTPS (no API key required)\n// Queries multiple record types and returns a structured result.\n\nconst input = $input.item.json;\nconst domain = input.params?.domain ?? input.arguments?.domain ?? input.params?.domain_name ?? input.arguments?.domain_name;\n\nif (!domain) {\n  throw new Error('Missing required parameter: domain');\n}\n\nconst recordTypes = ['A', 'AAAA', 'MX', 'NS', 'TXT', 'CNAME', 'SOA'];\nconst dnsResults = {};\n\nfor (const type of recordTypes) {\n  try {\n    const response = await fetch(\n      `https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=${type}`,\n      { headers: { Accept: 'application/dns-json' } }\n    );\n    if (!response.ok) continue;\n    const data = await response.json();\n    if (data.Answer && data.Answer.length > 0) {\n      dnsResults[type] = data.Answer.map(record => ({\n        name: record.name,\n        ttl: record.TTL,\n        data: record.data\n      }));\n    }\n  } catch (err) {\n    dnsResults[type] = { error: err.message };\n  }\n}\n\nconst foundTypes = Object.keys(dnsResults);\n\nreturn {\n  json: {\n    tool: 'dns_lookup',\n    domain,\n    records_found: foundTypes,\n    dns_records: dnsResults,\n    summary: foundTypes.length > 0\n      ? `DNS lookup for \"${domain}\" returned ${foundTypes.length} record type(s): ${foundTypes.join(', ')}.`\n      : `DNS lookup for \"${domain}\" returned no records.`\n  }\n};\n"
+      },
+      "id": "a1b2c3d4-0001-4000-8000-000000000003",
+      "name": "DNS Lookup",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 160]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://rdap.org/domain/{{ encodeURIComponent($json.params?.domain ?? $json.arguments?.domain ?? $json.params?.domain_name ?? $json.arguments?.domain_name) }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/rdap+json"
+            }
+          ]
+        }
+      },
+      "id": "a1b2c3d4-0001-4000-8000-000000000004",
+      "name": "WHOIS Lookup (RDAP)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 440]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format the RDAP (Registration Data Access Protocol) response into a clean WHOIS summary.\n// RDAP is the modern successor to WHOIS, provided free by rdap.org.\n\nconst rdap = $input.item.json;\n\n// Helper: extract first fn (formatted name) from a vCard array\nconst getVCardFn = (vcard) => {\n  if (!vcard || !Array.isArray(vcard[1])) return undefined;\n  const fn = vcard[1].find(v => v[0] === 'fn');\n  return fn ? fn[3] : undefined;\n};\n\n// Parse events into a key/date map\nconst events = (rdap.events ?? []).reduce((acc, e) => {\n  acc[e.eventAction] = e.eventDate;\n  return acc;\n}, {});\n\n// Extract entity names by role\nconst getEntityByRole = (role) => {\n  const entity = (rdap.entities ?? []).find(e => e.roles?.includes(role));\n  if (!entity) return null;\n  const name = entity.handle ?? getVCardFn(entity.vcardArray);\n  return name ?? null;\n};\n\nconst domain = rdap.ldhName ?? rdap.handle ?? 'unknown';\n\nconst result = {\n  tool: 'whois_lookup',\n  domain,\n  status: rdap.status ?? [],\n  registrar: getEntityByRole('registrar'),\n  registrant: getEntityByRole('registrant'),\n  nameservers: (rdap.nameservers ?? []).map(ns => ns.ldhName ?? ns.handle),\n  dates: {\n    registered: events['registration'] ?? null,\n    last_changed: events['last changed'] ?? null,\n    expires: events['expiration'] ?? null,\n    last_update_of_rdap_database: events['last update of RDAP database'] ?? null\n  },\n  port43: rdap.port43 ?? null,\n  rdap_links: (rdap.links ?? []).map(l => ({ rel: l.rel, href: l.href })),\n  summary: `WHOIS/RDAP lookup for \"${domain}\" completed. Status: ${(rdap.status ?? []).join(', ') || 'N/A'}. Registrar: ${getEntityByRole('registrar') ?? 'N/A'}.`\n};\n\nreturn { json: result };\n"
+      },
+      "id": "a1b2c3d4-0001-4000-8000-000000000005",
+      "name": "Format WHOIS",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [940, 440]
+    }
+  ],
+  "connections": {
+    "MCP Server Trigger": {
+      "main": [
+        [
+          {
+            "node": "Route by Tool",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Tool": {
+      "main": [
+        [
+          {
+            "node": "DNS Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "WHOIS Lookup (RDAP)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WHOIS Lookup (RDAP)": {
+      "main": [
+        [
+          {
+            "node": "Format WHOIS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": ""
+  },
+  "tags": [
+    { "name": "MCP" },
+    { "name": "OSINT" },
+    { "name": "DNS" },
+    { "name": "WHOIS" }
+  ]
+}
